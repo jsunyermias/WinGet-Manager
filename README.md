@@ -1,2 +1,2 @@
 # WinGet-Manager
-PowerShell script to get WinGet automatically managed
+PowerShell scripts to get WinGet automatically managed
