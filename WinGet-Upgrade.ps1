@@ -3,44 +3,47 @@
 param()
 
 # Define paths
-$lockFile = "C:\ProgramData\WinGet-extra\tmp\WinGet-Maintenance.lock"
-$logFile = "C:\ProgramData\WinGet-extra\logs\WinGet-Maintenance_$(Get-Date -Format 'yyyy-MM-dd').log"
+$lockFile = "C:\ProgramData\WinGet-extra\tmp\WinGet-Upgrade.lock"
 $tmpFolder = Split-Path $lockFile
+$logFile = "C:\ProgramData\WinGet-extra\logs\WinGet-Upgrade_$(Get-Date -Format 'yyyy-MM-dd').log"
 $logFolder = Split-Path $logFile
 $maxLockAgeMinutes = 240
 
-# Create necessary folders (refactored)
-foreach ($folder in @($tmpFolder, $logFolder)) {
-    if (-not (Test-Path $folder)) {
-        New-Item -ItemType Directory -Path $folder -Force | Out-Null
-    }
+# Create necessary folders
+if (-not (Test-Path $tmpFolder)) {
+    New-Item -ItemType Directory -Path $tmpFolder -Force | Out-Null
+}
+if (-not (Test-Path $logFolder)) {
+    New-Item -ItemType Directory -Path $logFolder -Force | Out-Null
 }
 
 # Logging function
 function Log {
-    param ([string]$message)
+    param ([string]$Message)
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $logMessage = "$timestamp - $message"
+    $logMessage = "$timestamp - $Message"
     Write-Verbose $logMessage
     Add-Content -Path $logFile -Value $logMessage
 }
 
-# Acquire and release lock
+# Acquire lock to prevent concurrent execution
 function Acquire-Lock {
     if (Test-Path $lockFile) {
         $lockAge = (Get-Date) - (Get-Item $lockFile).LastWriteTime
         if ($lockAge.TotalMinutes -gt $maxLockAgeMinutes) {
-            Log "Lock file older than $maxLockAgeMinutes minutes. Removing stale lock."
+            Log "Lock file is older than $maxLockAgeMinutes minutes. Removing stale lock."
             Remove-Item $lockFile -Force
         } else {
             Log "ERROR: Another instance is already running."
             throw "Lock file exists."
         }
     }
+
     "$PID - $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" | Out-File -FilePath $lockFile -Encoding ascii -Force
     Log "Lock acquired: $lockFile"
 }
 
+# Release lock
 function Release-Lock {
     try {
         if (Test-Path $lockFile) {
@@ -52,7 +55,7 @@ function Release-Lock {
     }
 }
 
-# Admin check
+# Check for admin rights
 function Check-Admin {
     $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")
     if (-not $isAdmin) {
@@ -65,168 +68,119 @@ function Check-Admin {
     }
 }
 
-# Robust download with fallback
-function Safe-Download {
+# Upgrade a package using its ID
+function Upgrade-WinGetPackage {
     param (
-        [string[]]$Urls,
-        [string]$OutFile
+        [Parameter(Mandatory = $true)]
+        [string]$PackageId
     )
-    foreach ($url in $Urls) {
-        try {
-            Invoke-WebRequest -Uri $url -OutFile $OutFile -ErrorAction Stop
-            Log "Downloaded successfully from $url."
-            return
-        } catch {
-            Log "WARNING: Failed to download from $url. Retrying with -UseBasicParsing..."
-            try {
-                Invoke-WebRequest -Uri $url -OutFile $OutFile -UseBasicParsing -ErrorAction Stop
-                Log "Downloaded with -UseBasicParsing from $url."
-                return
-            } catch {
-                Log "WARNING: Could not download from $url. $_"
+
+    $pkgFolder = Join-Path $tmpFolder $PackageId
+    if (-not (Test-Path $pkgFolder)) {
+        New-Item -ItemType Directory -Path $pkgFolder -Force | Out-Null
+    }
+
+    Log "Downloading installer for ${PackageId}..."
+    $download = Start-Process -FilePath "winget" `
+        -ArgumentList "download", "--id", $PackageId, "-d", $pkgFolder, "--accept-source-agreements", "--accept-package-agreements" `
+        -NoNewWindow -Wait -PassThru
+
+    if ($download.ExitCode -ne 0) {
+        Log "Error downloading installer for ${PackageId}. Exit code: $($download.ExitCode)"
+        return $download.ExitCode
+    }
+
+    $retryableExitCodes = @(0x8A150102, 0x8A150103)
+    $maxRetries = 3
+    $retryCount = 0
+
+    do {
+        Log "Attempting upgrade for ${PackageId} (try $($retryCount + 1)/$maxRetries)..."
+        $process = Start-Process -FilePath "winget" `
+            -ArgumentList "upgrade", "--id", $PackageId, "-e", "--accept-source-agreements", "--accept-package-agreements" `
+            -NoNewWindow -Wait -PassThru
+
+        $code = $process.ExitCode
+
+        switch ($code) {
+            0x0 {
+                Log "${PackageId} upgraded successfully."
+                return $code
             }
-        }
-    }
-    Log "ERROR: All download attempts failed."
-    throw "Failed to download from all provided URLs."
-}
+            0x8A150101 {
+                Log "${PackageId} in use — cannot upgrade now."
+                return $code
+            }
+            0x8A150111 {
+                Log "${PackageId} in use — cannot upgrade now."
+                return $code
+            }
+            0x8A15010B {
+                Log "${PackageId} requires reboot to complete."
+                return $code
+            }
+            { $retryableExitCodes -contains $_ } {
+                Log "Temporary issue for ${PackageId} (code $code). Retrying in 30 seconds..."
+                Start-Sleep -Seconds 30
+                $retryCount++
+                continue
+            }
+            default {
+                Log "Unknown error (code $code) for ${PackageId}. Attempting uninstall and reinstall."
 
-# Winget installation helper
-function Install-Winget {
-    $output = "$env:TEMP\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
-    $urls = @(
-        "https://aka.ms/getwinget",
-        "https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
-    )
-    Safe-Download -Urls $urls -OutFile $output
-    Add-AppxPackage -Path $output
-    Start-Sleep -Seconds 5
-    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
-        Log "ERROR: WinGet still not available after installation."
-        throw "WinGet install failed."
-    }
-}
+                $uninstall = Start-Process -FilePath "winget" `
+                    -ArgumentList "uninstall", "--id", $PackageId, "-e", "--accept-source-agreements", `
+                    -NoNewWindow -Wait -PassThru
 
-# Check if winget is available
-function Check-Winget {
-    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
-        Log "WARNING: WinGet not found. Attempting installation..."
-        Install-Winget
-        Log "WinGet installed successfully."
-    } else {
-        Log "WinGet is already installed."
-    }
-}
-
-# Ensure PSGallery is registered and trusted
-function Ensure-PSGalleryTrusted {
-    try {
-        # Configuración para deshabilitar prompts
-        $env:NuGet_DisablePromptForProviderInstallation = "true"
-        $ProgressPreference = 'SilentlyContinue'
-
-        # Instalar NuGet provider (método compatible con PS 5.1)
-        if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue -ListAvailable)) {
-            Log "Instalando proveedor NuGet silenciosamente..."
-            
-            # Método alternativo para PS 5.1
-            Start-Process -FilePath "powershell.exe" -ArgumentList @(
-                "-NoProfile",
-                "-ExecutionPolicy Bypass",
-                "-Command",
-                "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;",
-                "Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.208 -Force -ErrorAction Stop | Out-Null"
-            ) -Wait -WindowStyle Hidden
-        }
-
-        # Configurar PSGallery (versión compatible)
-        $psgallery = Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue
-        if (-not $psgallery) {
-            Log "Registrando repositorio PSGallery."
-            Register-PSRepository -Default -ErrorAction Stop | Out-Null
-        }
-        
-        # Establecer como trusted (sin parámetro -Force en PS 5.1)
-        if ((Get-PSRepository -Name PSGallery).InstallationPolicy -ne "Trusted") {
-            Log "Configurando PSGallery como Trusted."
-            Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction Stop | Out-Null
-        }
-    } catch {
-        Log "ERROR: Fallo al configurar PSGallery. $_"
-        throw $_
-    } finally {
-        $ProgressPreference = 'Continue'
-    }
-}
-
-function Check-WinGetModule {
-    try {
-        if (-not (Get-Module -ListAvailable -Name Microsoft.WinGet.Client)) {
-            Log "Installing Microsoft.WinGet.Client module..."
-            Ensure-PSGalleryTrusted
-            
-            # Instalación compatible con PS 5.1
-            Start-Process -FilePath "powershell.exe" -ArgumentList @(
-                "-NoProfile",
-                "-ExecutionPolicy Bypass",
-                "-Command",
-                "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;",
-                "Install-Module -Name Microsoft.WinGet.Client -Force -AllowClobber -Confirm:`$false -SkipPublisherCheck -ErrorAction Stop | Out-Null"
-            ) -Wait -WindowStyle Hidden
-            
-            Log "Module installed successfully."
-        } else {
-            Log "Microsoft.WinGet.Client module already present."
-        }
-    } catch {
-        Log "ERROR: Failed to install Microsoft.WinGet.Client. $_"
-        throw $_
-    }
-}
-
-# Check and apply WinGet updates
-function Check-WinGetUpdates {
-    try {
-        Import-Module Microsoft.WinGet.Client -ErrorAction Stop
-        Log "Imported Microsoft.WinGet.Client module."
-
-        $updates = Get-WinGetPackage | Where-Object {
-            ($_.Id -in @('Microsoft.AppInstaller', 'Microsoft.DesktopAppInstaller')) -and $_.Source -eq 'winget' -and $_.IsUpdateAvailable
-        }
-
-        if ($updates) {
-            Log "Found $($updates.Count) update(s)."
-            foreach ($pkg in $updates) {
-                try {
-                    winget upgrade --id $pkg.Id --silent --accept-package-agreements --accept-source-agreements
-                    Log "Upgraded: $($pkg.Id)"
-                } catch {
-                    Log "WARNING: Failed to upgrade $($pkg.Id). Trying reinstall..."
-                    Install-Winget
-                    Log "Reinstalled $($pkg.Id)"
+                if ($uninstall.ExitCode -eq 0) {
+                    Log "${PackageId} uninstalled successfully. Reinstalling..."
+                    $install = Start-Process -FilePath "winget" `
+                        -ArgumentList "install", "--id", $PackageId, "-e", "--accept-source-agreements", "--accept-package-agreements" `
+                        -NoNewWindow -Wait -PassThru
+                    if ($install.ExitCode -eq 0) {
+                        Log "${PackageId} successfully reinstalled."
+                    } else {
+                        Log "Failed to reinstall ${PackageId}. Exit code: $($install.ExitCode)"
+                    }
+                    return $install.ExitCode
+                } else {
+                    Log "Failed to uninstall ${PackageId}. Exit code: $($uninstall.ExitCode)"
+                    return $uninstall.ExitCode
                 }
             }
-        } else {
-            Log "No WinGet-related updates found."
         }
-    } catch {
-        Log "ERROR: Failed during WinGet update check. $_"
-        exit 1
-    }
+
+    } while ($retryCount -lt $maxRetries)
+
+    return $code
 }
 
-# Main execution
+# MAIN
 try {
     Check-Admin
     Acquire-Lock
-    Log "===== Starting WinGet Maintenance Script ====="
-    Check-Winget
-    Check-WinGetModule
-    Check-WinGetUpdates
+    Log "===== Starting WinGet Upgrade Script ====="
+
+    if (-not (Get-Module -Name Microsoft.WinGet.Client -ErrorAction SilentlyContinue)) {
+        Import-Module Microsoft.WinGet.Client -ErrorAction Stop
+        Log "Imported Microsoft.WinGet.Client module."
+    }
+
+    $packageList = Get-WinGetPackage | Where-Object { $_.Source -eq 'winget' -and $_.IsUpdateAvailable }
+
+    foreach ($pkg in $packageList) {
+        try {
+            $pkgId = $pkg.Id
+            Log "Upgrading package: ${pkgId}"
+            $result = Upgrade-WinGetPackage -PackageId $pkgId
+            Log "Result for ${pkgId}: Exit code ${result}"
+        } catch {
+            Log "ERROR while upgrading package $($pkg.Id): $_"
+        }
+    }
     Log "===== Script execution completed successfully ====="
 } catch {
-    Log "ERROR: Script failed. $_"
-    exit 1
+    Log "UNEXPECTED ERROR: $_"
 } finally {
     Release-Lock
 }
