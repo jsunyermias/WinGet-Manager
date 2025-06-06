@@ -121,27 +121,59 @@ function Check-Winget {
 # Ensure PSGallery is registered and trusted
 function Ensure-PSGalleryTrusted {
     try {
+        # Configuración para deshabilitar prompts
+        $env:NuGet_DisablePromptForProviderInstallation = "true"
+        $ProgressPreference = 'SilentlyContinue'
+
+        # Instalar NuGet provider (método compatible con PS 5.1)
+        if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue -ListAvailable)) {
+            Log "Instalando proveedor NuGet silenciosamente..."
+            
+            # Método alternativo para PS 5.1
+            Start-Process -FilePath "powershell.exe" -ArgumentList @(
+                "-NoProfile",
+                "-ExecutionPolicy Bypass",
+                "-Command",
+                "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;",
+                "Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.208 -Force -ErrorAction Stop | Out-Null"
+            ) -Wait -WindowStyle Hidden
+        }
+
+        # Configurar PSGallery (versión compatible)
         $psgallery = Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue
         if (-not $psgallery) {
-            Log "Registering PSGallery repository."
-            Register-PSRepository -Default -ErrorAction Stop
-        } elseif ($psgallery.InstallationPolicy -ne "Trusted") {
-            Log "Setting PSGallery as Trusted."
-            Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction Stop
+            Log "Registrando repositorio PSGallery."
+            Register-PSRepository -Default -ErrorAction Stop | Out-Null
+        }
+        
+        # Establecer como trusted (sin parámetro -Force en PS 5.1)
+        if ((Get-PSRepository -Name PSGallery).InstallationPolicy -ne "Trusted") {
+            Log "Configurando PSGallery como Trusted."
+            Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction Stop | Out-Null
         }
     } catch {
-        Log "ERROR: Failed to configure PSGallery. $_"
+        Log "ERROR: Fallo al configurar PSGallery. $_"
         throw $_
+    } finally {
+        $ProgressPreference = 'Continue'
     }
 }
 
-# Check/install Microsoft.WinGet.Client module
 function Check-WinGetModule {
     try {
         if (-not (Get-Module -ListAvailable -Name Microsoft.WinGet.Client)) {
             Log "Installing Microsoft.WinGet.Client module..."
             Ensure-PSGalleryTrusted
-            Install-Module -Name Microsoft.WinGet.Client -Force -Confirm:$false -AllowClobber -ErrorAction Stop
+            
+            # Instalación compatible con PS 5.1
+            Start-Process -FilePath "powershell.exe" -ArgumentList @(
+                "-NoProfile",
+                "-ExecutionPolicy Bypass",
+                "-Command",
+                "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;",
+                "Install-Module -Name Microsoft.WinGet.Client -Force -AllowClobber -Confirm:`$false -SkipPublisherCheck -ErrorAction Stop | Out-Null"
+            ) -Wait -WindowStyle Hidden
+            
             Log "Module installed successfully."
         } else {
             Log "Microsoft.WinGet.Client module already present."
