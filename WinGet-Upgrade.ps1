@@ -91,6 +91,7 @@ function Upgrade-WinGetPackage {
     }
 
     $retryableExitCodes = @(0x8A150102, 0x8A150103)
+    $installTechChangedCode = 0x8A150104 # Código específico para tecnología de instalación diferente
     $maxRetries = 3
     $retryCount = 0
 
@@ -119,6 +120,10 @@ function Upgrade-WinGetPackage {
                 Log "${PackageId} requires reboot to complete."
                 return $code
             }
+            $installTechChangedCode {
+                Log "Installation technology changed for ${PackageId}. Performing uninstall and fresh install..."
+                return Invoke-CleanInstall -PackageId $PackageId
+            }
             { $retryableExitCodes -contains $_ } {
                 Log "Temporary issue for ${PackageId} (code $code). Retrying in 30 seconds..."
                 Start-Sleep -Seconds 30
@@ -127,32 +132,72 @@ function Upgrade-WinGetPackage {
             }
             default {
                 Log "Unknown error (code $code) for ${PackageId}. Attempting uninstall and reinstall."
-
-                $uninstall = Start-Process -FilePath "winget" `
-                    -ArgumentList "uninstall", "--id", $PackageId, "-e", "--accept-source-agreements", `
-                    -NoNewWindow -Wait -PassThru
-
-                if ($uninstall.ExitCode -eq 0) {
-                    Log "${PackageId} uninstalled successfully. Reinstalling..."
-                    $install = Start-Process -FilePath "winget" `
-                        -ArgumentList "install", "--id", $PackageId, "-e", "--accept-source-agreements", "--accept-package-agreements" `
-                        -NoNewWindow -Wait -PassThru
-                    if ($install.ExitCode -eq 0) {
-                        Log "${PackageId} successfully reinstalled."
-                    } else {
-                        Log "Failed to reinstall ${PackageId}. Exit code: $($install.ExitCode)"
-                    }
-                    return $install.ExitCode
-                } else {
-                    Log "Failed to uninstall ${PackageId}. Exit code: $($uninstall.ExitCode)"
-                    return $uninstall.ExitCode
-                }
+                return Invoke-CleanInstall -PackageId $PackageId
             }
         }
 
     } while ($retryCount -lt $maxRetries)
 
     return $code
+}
+
+# Nueva función para manejar desinstalación e instalación limpia
+function Invoke-CleanInstall {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$PackageId
+    )
+
+    Log "Starting clean installation process for ${PackageId}..."
+    
+    # Paso 1: Desinstalar
+    $uninstall = Start-Process -FilePath "winget" `
+        -ArgumentList "uninstall", "--id", $PackageId, "-e", "--accept-source-agreements" `
+        -NoNewWindow -Wait -PassThru
+
+    if ($uninstall.ExitCode -ne 0) {
+        Log "WARNING: Failed to uninstall ${PackageId}. Exit code: $($uninstall.ExitCode)"
+        # Intentar forzar la desinstalación con el instalador descargado
+        $installer = Get-ChildItem -Path (Join-Path $tmpFolder $PackageId) -Filter "*.exe" | Select-Object -First 1
+        if ($installer) {
+            Log "Attempting uninstall using downloaded installer: $($installer.FullName)"
+            $uninstallAlt = Start-Process -FilePath $installer.FullName -ArgumentList "/S /uninstall" -Wait -PassThru
+            if ($uninstallAlt.ExitCode -eq 0) {
+                Log "Successfully uninstalled using installer executable"
+            } else {
+                Log "ERROR: Failed to uninstall using installer. Exit code: $($uninstallAlt.ExitCode)"
+                return $uninstallAlt.ExitCode
+            }
+        } else {
+            return $uninstall.ExitCode
+        }
+    }
+
+    # Paso 2: Instalación limpia
+    Log "Performing clean installation of ${PackageId}..."
+    $install = Start-Process -FilePath "winget" `
+        -ArgumentList "install", "--id", $PackageId, "-e", "--accept-source-agreements", "--accept-package-agreements" `
+        -NoNewWindow -Wait -PassThru
+
+    if ($install.ExitCode -eq 0) {
+        Log "${PackageId} successfully installed."
+    } else {
+        Log "ERROR: Failed to install ${PackageId}. Exit code: $($install.ExitCode)"
+        # Intentar instalación con el ejecutable descargado
+        $installer = Get-ChildItem -Path (Join-Path $tmpFolder $PackageId) -Filter "*.exe" | Select-Object -First 1
+        if ($installer) {
+            Log "Attempting installation using downloaded installer: $($installer.FullName)"
+            $installAlt = Start-Process -FilePath $installer.FullName -ArgumentList "/S" -Wait -PassThru
+            if ($installAlt.ExitCode -eq 0) {
+                Log "Successfully installed using installer executable"
+            } else {
+                Log "ERROR: Failed to install using installer. Exit code: $($installAlt.ExitCode)"
+            }
+            return $installAlt.ExitCode
+        }
+    }
+
+    return $install.ExitCode
 }
 
 # MAIN
