@@ -2,21 +2,27 @@
 [CmdletBinding()]
 param()
 
-# Define paths
+# ===============================
+# Define constants and paths
+# ===============================
 $lockFile = "C:\ProgramData\WinGet-extra\tmp\WinGet-Maintenance.lock"
 $logFile = "C:\ProgramData\WinGet-extra\logs\WinGet-Maintenance_$(Get-Date -Format 'yyyy-MM-dd').log"
 $tmpFolder = Split-Path $lockFile
 $logFolder = Split-Path $logFile
 $maxLockAgeMinutes = 240
 
-# Create necessary folders (refactored)
+# ===============================
+# Create required folders if missing
+# ===============================
 foreach ($folder in @($tmpFolder, $logFolder)) {
     if (-not (Test-Path $folder)) {
         New-Item -ItemType Directory -Path $folder -Force | Out-Null
     }
 }
 
-# Logging function
+# ===============================
+# Logging function (timestamped)
+# ===============================
 function Log {
     param ([string]$message)
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
@@ -25,12 +31,14 @@ function Log {
     Add-Content -Path $logFile -Value $logMessage
 }
 
-# Acquire and release lock
+# ===============================
+# Lock acquisition to prevent parallel execution
+# ===============================
 function Acquire-Lock {
     if (Test-Path $lockFile) {
         $lockAge = (Get-Date) - (Get-Item $lockFile).LastWriteTime
         if ($lockAge.TotalMinutes -gt $maxLockAgeMinutes) {
-            Log "Lock file older than $maxLockAgeMinutes minutes. Removing stale lock."
+            Log "Lock file is older than $maxLockAgeMinutes minutes. Removing stale lock."
             Remove-Item $lockFile -Force
         } else {
             Log "ERROR: Another instance is already running."
@@ -41,6 +49,9 @@ function Acquire-Lock {
     Log "Lock acquired: $lockFile"
 }
 
+# ===============================
+# Lock release at the end of execution
+# ===============================
 function Release-Lock {
     try {
         if (Test-Path $lockFile) {
@@ -48,15 +59,17 @@ function Release-Lock {
             Log "Lock released: $lockFile"
         }
     } catch {
-        Log "WARNING: Could not release lock file: $_"
+        Log "WARNING: Failed to release lock file: $_"
     }
 }
 
-# Admin check
+# ===============================
+# Check if the script is run as administrator
+# ===============================
 function Check-Admin {
     $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")
     if (-not $isAdmin) {
-        Log "WARNING: Script must be run as administrator. Restarting with elevation..."
+        Log "WARNING: Script must be run as administrator. Relaunching with elevation..."
         $arguments = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PSCommandPath`"") + $MyInvocation.UnboundArguments
         Start-Process -FilePath "powershell.exe" -ArgumentList $arguments -Verb RunAs
         exit
@@ -65,7 +78,9 @@ function Check-Admin {
     }
 }
 
-# Robust download with fallback
+# ===============================
+# Reliable download function with fallback
+# ===============================
 function Safe-Download {
     param (
         [string[]]$Urls,
@@ -74,7 +89,7 @@ function Safe-Download {
     foreach ($url in $Urls) {
         try {
             Invoke-WebRequest -Uri $url -OutFile $OutFile -ErrorAction Stop
-            Log "Downloaded successfully from $url."
+            Log "Successfully downloaded from $url."
             return
         } catch {
             Log "WARNING: Failed to download from $url. Retrying with -UseBasicParsing..."
@@ -88,10 +103,12 @@ function Safe-Download {
         }
     }
     Log "ERROR: All download attempts failed."
-    throw "Failed to download from all provided URLs."
+    throw "Download failed for all provided URLs."
 }
 
-# Winget installation helper
+# ===============================
+# Install WinGet if not present
+# ===============================
 function Install-Winget {
     $output = "$env:TEMP\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
     $urls = @(
@@ -102,12 +119,14 @@ function Install-Winget {
     Add-AppxPackage -Path $output
     Start-Sleep -Seconds 5
     if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
-        Log "ERROR: WinGet still not available after installation."
-        throw "WinGet install failed."
+        Log "ERROR: WinGet is still unavailable after installation."
+        throw "WinGet installation failed."
     }
 }
 
-# Check if winget is available
+# ===============================
+# Check if WinGet is available
+# ===============================
 function Check-Winget {
     if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
         Log "WARNING: WinGet not found. Attempting installation..."
@@ -118,18 +137,18 @@ function Check-Winget {
     }
 }
 
+# ===============================
 # Ensure PSGallery is registered and trusted
+# ===============================
 function Ensure-PSGalleryTrusted {
     try {
-        # Configuración para deshabilitar prompts
+        # Disable prompts during provider installation
         $env:NuGet_DisablePromptForProviderInstallation = "true"
         $ProgressPreference = 'SilentlyContinue'
 
-        # Instalar NuGet provider (método compatible con PS 5.1)
+        # Install NuGet provider silently (compatible with PowerShell 5.1)
         if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue -ListAvailable)) {
-            Log "Instalando proveedor NuGet silenciosamente..."
-            
-            # Método alternativo para PS 5.1
+            Log "Installing NuGet provider silently..."
             Start-Process -FilePath "powershell.exe" -ArgumentList @(
                 "-NoProfile",
                 "-ExecutionPolicy Bypass",
@@ -139,33 +158,34 @@ function Ensure-PSGalleryTrusted {
             ) -Wait -WindowStyle Hidden
         }
 
-        # Configurar PSGallery (versión compatible)
+        # Register PSGallery if missing
         $psgallery = Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue
         if (-not $psgallery) {
-            Log "Registrando repositorio PSGallery."
+            Log "Registering PSGallery repository."
             Register-PSRepository -Default -ErrorAction Stop | Out-Null
         }
-        
-        # Establecer como trusted (sin parámetro -Force en PS 5.1)
+
+        # Set PSGallery as trusted
         if ((Get-PSRepository -Name PSGallery).InstallationPolicy -ne "Trusted") {
-            Log "Configurando PSGallery como Trusted."
+            Log "Setting PSGallery as a trusted source."
             Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction Stop | Out-Null
         }
     } catch {
-        Log "ERROR: Fallo al configurar PSGallery. $_"
+        Log "ERROR: Failed to configure PSGallery. $_"
         throw $_
     } finally {
         $ProgressPreference = 'Continue'
     }
 }
 
+# ===============================
+# Ensure WinGet module is installed
+# ===============================
 function Check-WinGetModule {
     try {
         if (-not (Get-Module -ListAvailable -Name Microsoft.WinGet.Client)) {
             Log "Installing Microsoft.WinGet.Client module..."
             Ensure-PSGalleryTrusted
-            
-            # Instalación compatible con PS 5.1
             Start-Process -FilePath "powershell.exe" -ArgumentList @(
                 "-NoProfile",
                 "-ExecutionPolicy Bypass",
@@ -173,10 +193,9 @@ function Check-WinGetModule {
                 "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;",
                 "Install-Module -Name Microsoft.WinGet.Client -Force -AllowClobber -Confirm:`$false -SkipPublisherCheck -ErrorAction Stop | Out-Null"
             ) -Wait -WindowStyle Hidden
-            
             Log "Module installed successfully."
         } else {
-            Log "Microsoft.WinGet.Client module already present."
+            Log "Microsoft.WinGet.Client module already installed."
         }
     } catch {
         Log "ERROR: Failed to install Microsoft.WinGet.Client. $_"
@@ -184,11 +203,13 @@ function Check-WinGetModule {
     }
 }
 
-# Check and apply WinGet updates
+# ===============================
+# Check for and apply WinGet updates
+# ===============================
 function Check-WinGetUpdates {
     try {
         Import-Module Microsoft.WinGet.Client -ErrorAction Stop
-        Log "Imported Microsoft.WinGet.Client module."
+        Log "Microsoft.WinGet.Client module imported."
 
         $updates = Get-WinGetPackage | Where-Object {
             ($_.Id -in @('Microsoft.AppInstaller', 'Microsoft.DesktopAppInstaller')) -and $_.Source -eq 'winget' -and $_.IsUpdateAvailable
@@ -201,7 +222,7 @@ function Check-WinGetUpdates {
                     winget upgrade --id $pkg.Id --silent --accept-package-agreements --accept-source-agreements --source winget
                     Log "Upgraded: $($pkg.Id)"
                 } catch {
-                    Log "WARNING: Failed to upgrade $($pkg.Id). Trying reinstall..."
+                    Log "WARNING: Failed to upgrade $($pkg.Id). Attempting reinstall..."
                     Install-Winget
                     Log "Reinstalled $($pkg.Id)"
                 }
@@ -210,12 +231,14 @@ function Check-WinGetUpdates {
             Log "No WinGet-related updates found."
         }
     } catch {
-        Log "ERROR: Failed during WinGet update check. $_"
+        Log "ERROR: Failed while checking for WinGet updates. $_"
         exit 1
     }
 }
 
-# Main execution
+# ===============================
+# Main Execution Block
+# ===============================
 try {
     Check-Admin
     Acquire-Lock
@@ -225,7 +248,7 @@ try {
     Check-WinGetUpdates
     Log "===== Script execution completed successfully ====="
 } catch {
-    Log "ERROR: Script failed. $_"
+    Log "ERROR: Script execution failed. $_"
     exit 1
 } finally {
     Release-Lock
