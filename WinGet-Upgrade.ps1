@@ -5,20 +5,27 @@ param()
 # ===============================
 # Define constants and paths
 # ===============================
+
+# Path to the lock file to prevent parallel executions of this script
 $lockFile = "C:\ProgramData\WinGet-extra\tmp\WinGet-Upgrade.lock"
-$tmpFolder = Split-Path $lockFile
+
+# Path to the log file, named with current date
 $logFile = "C:\ProgramData\WinGet-extra\logs\WinGet-Upgrade_$(Get-Date -Format 'yyyy-MM-dd').log"
+
+# Directories extracted from above paths, used for folder existence checks
+$tmpFolder = Split-Path $lockFile
 $logFolder = Split-Path $logFile
+
+# Maximum allowed lock file age in minutes before it is considered stale and removed
 $maxLockAgeMinutes = 240
 
 # ===============================
 # Create required folders if missing
 # ===============================
-if (-not (Test-Path $tmpFolder)) {
-    New-Item -ItemType Directory -Path $tmpFolder -Force | Out-Null
-}
-if (-not (Test-Path $logFolder)) {
-    New-Item -ItemType Directory -Path $logFolder -Force | Out-Null
+foreach ($folder in @($tmpFolder, $logFolder)) {
+    if (-not (Test-Path $folder)) {
+        New-Item -ItemType Directory -Path $folder -Force | Out-Null
+    }
 }
 
 # ===============================
