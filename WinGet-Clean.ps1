@@ -166,7 +166,9 @@ try {
 
     # Attempt to acquire lock to prevent parallel execution
     Acquire-Lock
-
+    
+    Log "===== Starting WinGet Clean Script ====="
+    
     # Clean the logs older than 30 versions (files)
     Remove-OldFilesByType -Folder $logFolder -VersionsToKeep $VersionsToKeepForLogs
 
@@ -182,6 +184,8 @@ try {
             Log "WARNING: Failed to clean folder $($dir.FullName) - $_"
         }
     }
+
+    Log "===== Script execution completed successfully ====="
 
 } catch {
     # Log any unexpected errors
