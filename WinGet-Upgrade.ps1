@@ -228,8 +228,12 @@ function Invoke-CleanInstall {
 # Main Execution Block
 # ===============================
 try {
+    # Verify running with administrator privileges or relaunch elevated
     Check-Admin
+
+    # Attempt to acquire lock to prevent parallel execution
     Acquire-Lock
+    
     Log "===== Starting WinGet Upgrade Script ====="
 
     # Import WinGet module if not already loaded
