@@ -19,6 +19,15 @@ $logFolder = Split-Path $logFile
 $maxLockAgeMinutes = 240
 
 # ===============================
+# Create required folders if missing
+# ===============================
+foreach ($folder in @($tmpFolder, $logFolder)) {
+    if (-not (Test-Path $folder)) {
+        New-Item -ItemType Directory -Path $folder -Force | Out-Null
+    }
+}
+
+# ===============================
 # Define versions to keep for logs and tmp separately
 # ===============================
 $VersionsToKeepForLogs = 30
