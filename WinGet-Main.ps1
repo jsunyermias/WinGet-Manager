@@ -86,7 +86,10 @@ try {
 
     foreach ($script in $scripts) {
         Log "Running $script..."
-        $proc = Start-Process -FilePath "powershell.exe" -ArgumentList "-ExecutionPolicy Bypass -File `"$script`"" -Wait -PassThru
+        $proc = Start-Process -FilePath "powershell.exe" `
+            -ArgumentList "-ExecutionPolicy Bypass -File `"$script`"" `
+            -WindowStyle Hidden -Wait -PassThru
+
         if ($proc.ExitCode -ne 0) {
             Log "ERROR: The script $script failed with code $($proc.ExitCode). Stopping execution."
             break
