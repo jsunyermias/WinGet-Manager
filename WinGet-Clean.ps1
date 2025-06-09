@@ -1,5 +1,6 @@
 # Requires -RunAsAdministrator
 [CmdletBinding()]
+param()
 
 # ===============================
 # Define constants and paths
