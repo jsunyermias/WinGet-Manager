@@ -91,17 +91,22 @@ function Check-Admin {
 # ===============================
 
 try {
+    # Verify running with administrator privileges or relaunch elevated
     Check-Admin
+    
+    # Attempt to acquire lock to prevent parallel execution    
     Acquire-Lock
 
     Log "===== Starting WinGet Main Script ====="
 
+    # Define the scripts to run
     $scripts = @(
         Join-Path -Path $env:ProgramData -ChildPath "WinGet-extra\WinGet-Maintenance.ps1"
         Join-Path -Path $env:ProgramData -ChildPath "WinGet-extra\WinGet-Upgrade.ps1"
         Join-Path -Path $env:ProgramData -ChildPath "WinGet-extra\WinGet-Clean.ps1"
     )
 
+    # Run scripts one by one
     foreach ($script in $scripts) {
         Log "Running $script..."
         $proc = Start-Process -FilePath "powershell.exe" `
