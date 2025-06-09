@@ -234,14 +234,18 @@ try {
     # Get list of upgradable packages from winget
     $packageList = Get-WinGetPackage | Where-Object { $_.Source -eq 'winget' -and $_.IsUpdateAvailable }
 
-    foreach ($pkg in $packageList) {
-        try {
-            $pkgId = $pkg.Id
-            Log "Upgrading package: ${pkgId}"
-            $result = Upgrade-WinGetPackage -PackageId $pkgId
-            Log "Result for ${pkgId}: Exit code ${result}"
-        } catch {
-            Log "ERROR while upgrading package $($pkg.Id): $_"
+    if ($packageList.Count -eq 0) {
+        Log "No updates available."
+    } else {
+        foreach ($pkg in $packageList) {
+            try {
+                $pkgId = $pkg.Id
+                Log "Upgrading package: ${pkgId}"
+                $result = Upgrade-WinGetPackage -PackageId $pkgId
+                Log "Result for ${pkgId}: Exit code ${result}"
+            } catch {
+                Log "ERROR while upgrading package $($pkg.Id): $_"
+            }
         }
     }
 
