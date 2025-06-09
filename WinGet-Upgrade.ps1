@@ -2,14 +2,18 @@
 [CmdletBinding()]
 param()
 
-# Define paths
+# ===============================
+# Define constants and paths
+# ===============================
 $lockFile = "C:\ProgramData\WinGet-extra\tmp\WinGet-Upgrade.lock"
 $tmpFolder = Split-Path $lockFile
 $logFile = "C:\ProgramData\WinGet-extra\logs\WinGet-Upgrade_$(Get-Date -Format 'yyyy-MM-dd').log"
 $logFolder = Split-Path $logFile
 $maxLockAgeMinutes = 240
 
-# Create necessary folders
+# ===============================
+# Create required folders if missing
+# ===============================
 if (-not (Test-Path $tmpFolder)) {
     New-Item -ItemType Directory -Path $tmpFolder -Force | Out-Null
 }
@@ -17,7 +21,9 @@ if (-not (Test-Path $logFolder)) {
     New-Item -ItemType Directory -Path $logFolder -Force | Out-Null
 }
 
-# Logging function
+# ===============================
+# Logging function (timestamped)
+# ===============================
 function Log {
     param ([string]$Message)
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
@@ -26,7 +32,9 @@ function Log {
     Add-Content -Path $logFile -Value $logMessage
 }
 
-# Acquire lock to prevent concurrent execution
+# ===============================
+# Lock acquisition to prevent parallel execution
+# ===============================
 function Acquire-Lock {
     if (Test-Path $lockFile) {
         $lockAge = (Get-Date) - (Get-Item $lockFile).LastWriteTime
@@ -43,7 +51,9 @@ function Acquire-Lock {
     Log "Lock acquired: $lockFile"
 }
 
-# Release lock
+# ===============================
+# Lock release at the end of execution
+# ===============================
 function Release-Lock {
     try {
         if (Test-Path $lockFile) {
@@ -55,7 +65,9 @@ function Release-Lock {
     }
 }
 
-# Check for admin rights
+# ===============================
+# Check if the script is run as administrator
+# ===============================
 function Check-Admin {
     $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")
     if (-not $isAdmin) {
@@ -68,7 +80,9 @@ function Check-Admin {
     }
 }
 
+# ===============================
 # Upgrade a package using its ID
+# ===============================
 function Upgrade-WinGetPackage {
     param (
         [Parameter(Mandatory = $true)]
@@ -86,12 +100,13 @@ function Upgrade-WinGetPackage {
         -NoNewWindow -Wait -PassThru
 
     if ($download.ExitCode -ne 0) {
-        Log "Error downloading installer for ${PackageId}. Exit code: $($download.ExitCode)"
+        Log "ERROR: Failed to download installer for ${PackageId}. Exit code: $($download.ExitCode)"
         return $download.ExitCode
     }
 
+    # Retry logic for specific exit codes
     $retryableExitCodes = @(0x8A150102, 0x8A150103)
-    $installTechChangedCode = 0x8A150104 # Código específico para tecnología de instalación diferente
+    $installTechChangedCode = 0x8A150104
     $maxRetries = 3
     $retryCount = 0
 
@@ -109,29 +124,29 @@ function Upgrade-WinGetPackage {
                 return $code
             }
             0x8A150101 {
-                Log "${PackageId} in use — cannot upgrade now."
+                Log "${PackageId} is currently in use — upgrade cannot proceed."
                 return $code
             }
             0x8A150111 {
-                Log "${PackageId} in use — cannot upgrade now."
+                Log "${PackageId} is currently in use — upgrade cannot proceed."
                 return $code
             }
             0x8A15010B {
-                Log "${PackageId} requires reboot to complete."
+                Log "${PackageId} requires a reboot to complete the upgrade."
                 return $code
             }
             $installTechChangedCode {
-                Log "Installation technology changed for ${PackageId}. Performing uninstall and fresh install..."
+                Log "Installation technology changed for ${PackageId}. Proceeding with uninstall and clean install..."
                 return Invoke-CleanInstall -PackageId $PackageId
             }
             { $retryableExitCodes -contains $_ } {
-                Log "Temporary issue for ${PackageId} (code $code). Retrying in 30 seconds..."
+                Log "Temporary issue encountered for ${PackageId} (code $code). Retrying in 30 seconds..."
                 Start-Sleep -Seconds 30
                 $retryCount++
                 continue
             }
             default {
-                Log "Unknown error (code $code) for ${PackageId}. Attempting uninstall and reinstall."
+                Log "Unknown error (code $code) occurred for ${PackageId}. Attempting uninstall and reinstall."
                 return Invoke-CleanInstall -PackageId $PackageId
             }
         }
@@ -141,7 +156,9 @@ function Upgrade-WinGetPackage {
     return $code
 }
 
-# Nueva función para manejar desinstalación e instalación limpia
+# ===============================
+# Perform uninstall and clean install of a package
+# ===============================
 function Invoke-CleanInstall {
     param (
         [Parameter(Mandatory = $true)]
@@ -149,23 +166,23 @@ function Invoke-CleanInstall {
     )
 
     Log "Starting clean installation process for ${PackageId}..."
-    
-    # Paso 1: Desinstalar
+
+    # Step 1: Uninstall the package
     $uninstall = Start-Process -FilePath "winget" `
         -ArgumentList "uninstall", "--id", $PackageId, "-e", "--accept-source-agreements", "--source", "winget" `
         -NoNewWindow -Wait -PassThru
 
     if ($uninstall.ExitCode -ne 0) {
         Log "WARNING: Failed to uninstall ${PackageId}. Exit code: $($uninstall.ExitCode)"
-        # Intentar forzar la desinstalación con el instalador descargado
+        # Attempt forced uninstall via downloaded installer
         $installer = Get-ChildItem -Path (Join-Path $tmpFolder $PackageId) -Filter "*.exe" | Select-Object -First 1
         if ($installer) {
             Log "Attempting uninstall using downloaded installer: $($installer.FullName)"
             $uninstallAlt = Start-Process -FilePath $installer.FullName -ArgumentList "/S /uninstall" -Wait -PassThru
             if ($uninstallAlt.ExitCode -eq 0) {
-                Log "Successfully uninstalled using installer executable"
+                Log "Successfully uninstalled using downloaded installer."
             } else {
-                Log "ERROR: Failed to uninstall using installer. Exit code: $($uninstallAlt.ExitCode)"
+                Log "ERROR: Failed to uninstall using downloaded installer. Exit code: $($uninstallAlt.ExitCode)"
                 return $uninstallAlt.ExitCode
             }
         } else {
@@ -173,25 +190,25 @@ function Invoke-CleanInstall {
         }
     }
 
-    # Paso 2: Instalación limpia
+    # Step 2: Perform clean installation
     Log "Performing clean installation of ${PackageId}..."
     $install = Start-Process -FilePath "winget" `
         -ArgumentList "install", "--id", $PackageId, "-e", "--accept-source-agreements", "--accept-package-agreements", "--source", "winget" `
         -NoNewWindow -Wait -PassThru
 
     if ($install.ExitCode -eq 0) {
-        Log "${PackageId} successfully installed."
+        Log "${PackageId} installed successfully."
     } else {
         Log "ERROR: Failed to install ${PackageId}. Exit code: $($install.ExitCode)"
-        # Intentar instalación con el ejecutable descargado
+        # Attempt install via downloaded executable
         $installer = Get-ChildItem -Path (Join-Path $tmpFolder $PackageId) -Filter "*.exe" | Select-Object -First 1
         if ($installer) {
-            Log "Attempting installation using downloaded installer: $($installer.FullName)"
+            Log "Attempting install using downloaded installer: $($installer.FullName)"
             $installAlt = Start-Process -FilePath $installer.FullName -ArgumentList "/S" -Wait -PassThru
             if ($installAlt.ExitCode -eq 0) {
-                Log "Successfully installed using installer executable"
+                Log "Successfully installed using downloaded installer."
             } else {
-                Log "ERROR: Failed to install using installer. Exit code: $($installAlt.ExitCode)"
+                Log "ERROR: Failed to install using downloaded installer. Exit code: $($installAlt.ExitCode)"
             }
             return $installAlt.ExitCode
         }
@@ -200,17 +217,21 @@ function Invoke-CleanInstall {
     return $install.ExitCode
 }
 
-# MAIN
+# ===============================
+# Main Execution Block
+# ===============================
 try {
     Check-Admin
     Acquire-Lock
     Log "===== Starting WinGet Upgrade Script ====="
 
+    # Import WinGet module if not already loaded
     if (-not (Get-Module -Name Microsoft.WinGet.Client -ErrorAction SilentlyContinue)) {
         Import-Module Microsoft.WinGet.Client -ErrorAction Stop
         Log "Imported Microsoft.WinGet.Client module."
     }
 
+    # Get list of upgradable packages from winget
     $packageList = Get-WinGetPackage | Where-Object { $_.Source -eq 'winget' -and $_.IsUpdateAvailable }
 
     foreach ($pkg in $packageList) {
@@ -223,6 +244,7 @@ try {
             Log "ERROR while upgrading package $($pkg.Id): $_"
         }
     }
+
     Log "===== Script execution completed successfully ====="
 } catch {
     Log "UNEXPECTED ERROR: $_"
