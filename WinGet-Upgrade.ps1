@@ -82,7 +82,7 @@ function Upgrade-WinGetPackage {
 
     Log "Downloading installer for ${PackageId}..."
     $download = Start-Process -FilePath "winget" `
-        -ArgumentList "download", "--id", $PackageId, "-d", $pkgFolder, "--accept-source-agreements", "--accept-package-agreements" `
+        -ArgumentList "download", "--id", $PackageId, "-d", $pkgFolder, "--accept-source-agreements", "--accept-package-agreements", "--source", "winget" `
         -NoNewWindow -Wait -PassThru
 
     if ($download.ExitCode -ne 0) {
@@ -98,7 +98,7 @@ function Upgrade-WinGetPackage {
     do {
         Log "Attempting upgrade for ${PackageId} (try $($retryCount + 1)/$maxRetries)..."
         $process = Start-Process -FilePath "winget" `
-            -ArgumentList "upgrade", "--id", $PackageId, "-e", "--accept-source-agreements", "--accept-package-agreements" `
+            -ArgumentList "upgrade", "--id", $PackageId, "-e", "--accept-source-agreements", "--accept-package-agreements", "--source", "winget" `
             -NoNewWindow -Wait -PassThru
 
         $code = $process.ExitCode
@@ -152,7 +152,7 @@ function Invoke-CleanInstall {
     
     # Paso 1: Desinstalar
     $uninstall = Start-Process -FilePath "winget" `
-        -ArgumentList "uninstall", "--id", $PackageId, "-e", "--accept-source-agreements" `
+        -ArgumentList "uninstall", "--id", $PackageId, "-e", "--accept-source-agreements", "--source", "winget" `
         -NoNewWindow -Wait -PassThru
 
     if ($uninstall.ExitCode -ne 0) {
@@ -176,7 +176,7 @@ function Invoke-CleanInstall {
     # Paso 2: Instalación limpia
     Log "Performing clean installation of ${PackageId}..."
     $install = Start-Process -FilePath "winget" `
-        -ArgumentList "install", "--id", $PackageId, "-e", "--accept-source-agreements", "--accept-package-agreements" `
+        -ArgumentList "install", "--id", $PackageId, "-e", "--accept-source-agreements", "--accept-package-agreements", "--source", "winget" `
         -NoNewWindow -Wait -PassThru
 
     if ($install.ExitCode -eq 0) {
