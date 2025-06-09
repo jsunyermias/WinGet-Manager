@@ -198,7 +198,7 @@ function Check-WinGetUpdates {
             Log "Found $($updates.Count) update(s)."
             foreach ($pkg in $updates) {
                 try {
-                    winget upgrade --id $pkg.Id --silent --accept-package-agreements --accept-source-agreements
+                    winget upgrade --id $pkg.Id --silent --accept-package-agreements --accept-source-agreements --source winget
                     Log "Upgraded: $($pkg.Id)"
                 } catch {
                     Log "WARNING: Failed to upgrade $($pkg.Id). Trying reinstall..."
