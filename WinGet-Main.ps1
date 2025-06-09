@@ -7,7 +7,9 @@ $logFile = "C:\ProgramData\WinGet-extra\logs\WinGet-Main_$(Get-Date -Format 'yyy
 $logFolder = Split-Path $logFile
 $maxLockAgeMinutes = 240
 
-# Crear carpeta de logs si no existe
+# ===============================
+# Create log folder if missing
+# ===============================
 if (-not (Test-Path $logFolder)) {
     New-Item -ItemType Directory -Path $logFolder -Force | Out-Null
 }
