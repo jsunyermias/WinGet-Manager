@@ -5,10 +5,18 @@ param()
 # ===============================
 # Define constants and paths
 # ===============================
+
+# Path to the lock file to prevent parallel executions of this script
 $lockFile = "C:\ProgramData\WinGet-extra\tmp\WinGet-Maintenance.lock"
+
+# Path to the log file, named with current date
 $logFile = "C:\ProgramData\WinGet-extra\logs\WinGet-Maintenance_$(Get-Date -Format 'yyyy-MM-dd').log"
+
+# Directories extracted from above paths, used for folder existence checks
 $tmpFolder = Split-Path $lockFile
 $logFolder = Split-Path $logFile
+
+# Maximum allowed lock file age in minutes before it is considered stale and removed
 $maxLockAgeMinutes = 240
 
 # ===============================
