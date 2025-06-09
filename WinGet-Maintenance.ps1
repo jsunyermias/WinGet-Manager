@@ -248,16 +248,30 @@ function Check-WinGetUpdates {
 # Main Execution Block
 # ===============================
 try {
+    # Verify running with administrator privileges or relaunch elevated
     Check-Admin
+    
+    # Attempt to acquire lock to prevent parallel execution    
     Acquire-Lock
+    
     Log "===== Starting WinGet Maintenance Script ====="
+
+    # Check if winget is available and install it if not
     Check-Winget
+    
+    # Check if Microsoft.WinGet.Client is available and installa and import it if not
     Check-WinGetModule
+
+    # Check if there are available updates of winget and install it
     Check-WinGetUpdates
+    
     Log "===== Script execution completed successfully ====="
+    
 } catch {
+    # Log any unexpected errors
     Log "ERROR: Script execution failed. $_"
     exit 1
 } finally {
+    # Always release the lock file even if errors occurred
     Release-Lock
 }
