@@ -94,6 +94,8 @@ try {
     Check-Admin
     Acquire-Lock
 
+    Log "===== Starting WinGet Main Script ====="
+
     $scripts = @(
         Join-Path -Path $env:ProgramData -ChildPath "WinGet-extra\WinGet-Maintenance.ps1"
         Join-Path -Path $env:ProgramData -ChildPath "WinGet-extra\WinGet-Upgrade.ps1"
@@ -114,8 +116,10 @@ try {
         }
     }
 
+    Log "===== Script execution completed successfully ====="
+
 } catch {
-    Log "CRITICAL ERROR: $_"
+    Log "ERROR: Script execution failed. $_"
 } finally {
     Release-Lock
 }
