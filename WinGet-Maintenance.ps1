@@ -7,10 +7,10 @@ param()
 # ===============================
 
 # Path to the lock file to prevent parallel executions of this script
-$lockFile = "C:\ProgramData\WinGet-extra\tmp\WinGet-Maintenance.lock"
+$lockFile = Join-Path -Path $env:ProgramData -ChildPath  "WinGet-extra\tmp\WinGet-Maintenance.lock"
 
 # Path to the log file, named with current date
-$logFile = "C:\ProgramData\WinGet-extra\logs\WinGet-Maintenance_$(Get-Date -Format 'yyyy-MM-dd').log"
+$logFile = Join-Path -Path $env:ProgramData -ChildPath  "WinGet-extra\logs\WinGet-Maintenance_$(Get-Date -Format 'yyyy-MM-dd').log"
 
 # Directories extracted from above paths, used for folder existence checks
 $tmpFolder = Split-Path $lockFile
