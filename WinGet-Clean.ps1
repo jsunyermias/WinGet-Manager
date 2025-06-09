@@ -20,19 +20,22 @@ $logFolder = Split-Path $logFile
 $maxLockAgeMinutes = 240
 
 # ===============================
-# Create required folders if missing
-# ===============================
-foreach ($folder in @($tmpFolder, $logFolder)) {
-    if (-not (Test-Path $folder)) {
-        New-Item -ItemType Directory -Path $folder -Force | Out-Null
-    }
-}
-
-# ===============================
 # Define versions to keep for logs and tmp separately
 # ===============================
-$VersionsToKeepForLogs = 30
+
+# 4 scripts, 30 retention days for each script 
+$VersionsToKeepForLogs = 4*30
+
+# 10 versions of each software
 $VersionsToKeepForTmp = 10
+
+# ===============================
+# Create required folders if missing
+# ===============================
+if (-not (Test-Path $tmpFolder) -or -not (Test-Path $logFolder)) {
+    Write-Host "Nothing to clean. Exiting..."
+    exit
+}
 
 # ===============================
 # Logging function (timestamped)
