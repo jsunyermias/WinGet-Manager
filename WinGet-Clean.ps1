@@ -1,3 +1,8 @@
+<#
+WinGet Clean Script
+Version 0.8
+#>
+
 # Requires -RunAsAdministrator
 [CmdletBinding()]
 param()
