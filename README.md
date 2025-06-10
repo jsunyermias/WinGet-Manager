@@ -32,7 +32,7 @@ Uses ShellExecute to elevate permissions via UAC.
 Creates a temporary file admin-test.tmp to check write permissions in %ProgramData%.
 
 
----
+--
 
 
 ## 📄 WinGet-Main.ps1
@@ -81,3 +81,51 @@ Logs are saved daily with timestamps in %ProgramData%\WinGet-extra\logs\WinGet-M
 If any secondary script fails (non-zero exit code), the main script stops execution and logs the failure.
 
 The script creates required folders if they do not exist.
+
+
+--
+
+
+## 📄 WinGet-Maintenance.ps1
+
+This PowerShell script is designed to manage the maintenance of WinGet on Windows systems, ensuring it is installed, updated, and functioning properly, with controls to prevent parallel executions and manage administrator permissions.
+
+### 🔧 What does it do?
+
+Checks if WinGet is installed, and if not, installs it automatically from official sources.
+
+Installs and imports the Microsoft.WinGet.Client module needed for package management.
+
+Checks for updates to key WinGet packages (such as Microsoft.DesktopAppInstaller) and applies them automatically.
+
+Prevents parallel executions using a lock file with configurable expiration.
+
+Logs events and errors in daily log files for tracking.
+
+Verifies and ensures the script always runs with administrator privileges, relaunching with elevation if necessary.
+
+Ensures the PSGallery repository is registered and trusted for module installation.
+
+
+### 📁 Requirements
+
+Run the script with administrator permissions, or let it auto-elevate itself.
+
+Recommended location for logs and temporary files: %ProgramData%\WinGet-extra\ (the script creates folders if missing).
+
+PowerShell 5.1 or higher.
+
+
+### 📌 Notes
+
+Uses a lock file (WinGet-Maintenance.lock) to avoid simultaneous multiple instances running.
+
+Supports secure downloading with retries from multiple URLs to install WinGet if missing.
+
+Logs are stored with date stamps in %ProgramData%\WinGet-extra\logs\ for easy auditing.
+
+Silently manages NuGet provider installation and PSGallery repository configuration to avoid interruptions.
+
+On critical errors, logs the issue and stops execution, releasing the lock.
+
+Requires internet connection to download installers and updates.
