@@ -32,7 +32,7 @@ Uses ShellExecute to elevate permissions via UAC.
 Creates a temporary file admin-test.tmp to check write permissions in %ProgramData%.
 
 
---
+---
 
 
 ## 📄 WinGet-Main.ps1
@@ -83,7 +83,7 @@ If any secondary script fails (non-zero exit code), the main script stops execut
 The script creates required folders if they do not exist.
 
 
---
+---
 
 
 ## 📄 WinGet-Maintenance.ps1
