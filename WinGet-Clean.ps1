@@ -112,8 +112,6 @@ function Remove-OldFilesByType {
         [int]$VersionsToKeep
     )
     
-    Write-Verbose "DEBUG: Processing folder $Folder, keeping $VersionsToKeep versions."
-    
     # Verify the target folder exists before proceeding
     if (-Not (Test-Path $Folder)) {
         Log "ERROR: The directory '$Folder' does not exist."
@@ -128,9 +126,6 @@ function Remove-OldFilesByType {
         Log "INFO: No files found in the specified directory: $Folder"
         return
     }
-
-    Write-Verbose "DEBUG: Found $($files.Count) files in $Folder"
-    Write-Verbose "DEBUG: Found $($groupedFiles.Count) file extension groups"
 
     # Group files by their extension (file type)
     $groupedFiles = $files | Group-Object Extension
@@ -149,7 +144,6 @@ function Remove-OldFilesByType {
 
         # Remove the older files
         foreach ($file in $filesToRemove) {
-            Write-Host "DEBUG: Deleting file $($file.FullName)"
             try {
                 Remove-Item -Path $file.FullName -Force
                 Log "INFO: Deleted file: $($file.FullName)"
