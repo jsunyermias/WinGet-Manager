@@ -1,7 +1,4 @@
 # WinGet-Manager
-PowerShell scripts to get WinGet automatically managed
-
-# WinGet Maintenance System
 
 This project automates system maintenance using **WinGet** and **PowerShell**, centralizing all scripts, logs, and temporary files under `%ProgramData%\WinGet-extra`.
 
