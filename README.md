@@ -4,7 +4,10 @@ This project automates system maintenance using **WinGet** and **PowerShell**, c
 
 ## Script Structure
 
-### `Winget-Main.ps1`
+### `Winget-Main.vbs`
+Launches WinGet-Main.ps1 bypassing the ExecutionPolicy.
+
+### `WinGet-Main.ps1`
 The main script that runs the following scripts sequentially:
 1. [`WinGet-Maintenance.ps1`](#winget-maintenanceps1)
 2. [`WinGet-Upgrade.ps1`](#winget-upgradeps1)
@@ -20,6 +23,7 @@ This ensures the system is ready to use advanced WinGet commands from PowerShell
 ### `WinGet-Upgrade.ps1`
 - Checks for available updates for WinGet-managed packages.
 - Updates packages one by one if updates are found.
+- If updating a package is not possible, the package is uninstalled and reinstalled.
 - Saves a local copy of downloaded installers/updaters.
 
 ### `WinGet-Clean.ps1`
@@ -42,17 +46,8 @@ This includes:
 
 ## Usage
 
-1. **Run as Administrator:**  
+1. **Run WinGet-Main.vbs as Administrator:**  
    Elevated permissions are required to install, update, and clean system packages.
-
-2. **Manual Execution:**  
-   Run the main script manually with the following command:
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File "%ProgramData%\WinGet-extra\Winget-Main.ps1"
-
-3. Scheduled Task:
-It is recommended to create a scheduled task to run Winget-Main.ps1 periodically (e.g., weekly).
-
 
 ## Requirements
 
@@ -69,6 +64,4 @@ Notes
 
 The system runs non-interactively, making it ideal for automated environments.
 
-Cleanup routines retain a configurable minimum history.
-
-The system can be extended to include other package managers or maintenance tools.
+By default, cleanup routines retain a configurable minimum of 120 .log files (30 per script) and 10 software versions.
