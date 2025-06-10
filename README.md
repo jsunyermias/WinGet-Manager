@@ -38,10 +38,10 @@ All scripts and related files are located at:
 %ProgramData%\WinGet-extra\
 
 This includes:
-- Scripts (`*.ps1`)
-- Logs (`Logs\`)
-- Downloaded installers (`Installers\`)
-- Temporary files (`Temp\`)
+- Scripts (`*.ps1`,`*.vbs`)
+- Logs (`logs`)
+- Downloaded installers (`tmp\$PackageId`)
+- Temporary files (`tmp`)
 
 ## Usage
 
@@ -57,8 +57,7 @@ This includes:
 It is recommended to create a scheduled task to run Winget-Main.ps1 periodically (e.g., weekly).
 
 
-
-Requirements
+## Requirements
 
 Windows 10/11 with WinGet support
 
